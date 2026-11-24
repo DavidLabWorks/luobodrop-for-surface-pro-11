@@ -5,6 +5,10 @@
 #define TAG_MGMT_RX_HDR 44u
 #define TAG_ARRAY_BYTE 17u
 #define MGMT_PARAMS_BYTES 68u
+#define RX_ERR_CRC 0x01u
+#define RX_ERR_DECRYPT 0x08u
+#define RX_ERR_MIC 0x10u
+#define RX_ERR_KEY_CACHE_MISS 0x20u
 
 static uint32_t Read32(const uint8_t *p)
 {
@@ -51,5 +55,17 @@ int Wcn7850ReadMgmtEvent(const uint8_t *event, size_t length, WCN7850_MGMT_FRAME
     frame->length = frame_length;
     frame->status = Read32(params + 20);
     frame->frequency_mhz = Read32(params + 64);
+    return 1;
+}
+
+int Wcn7850ReadValidMgmtFrame(const uint8_t *event, size_t length, WCN7850_MGMT_FRAME *frame)
+{
+    if (!Wcn7850ReadMgmtEvent(event, length, frame))
+        return 0;
+    if ((frame->status & (RX_ERR_CRC | RX_ERR_DECRYPT | RX_ERR_MIC | RX_ERR_KEY_CACHE_MISS)) ||
+        frame->length < 24 || (frame->bytes[0] & 0x0fu) != 0) {
+        *frame = (WCN7850_MGMT_FRAME){0};
+        return 0;
+    }
     return 1;
 }

@@ -715,6 +715,9 @@ int wmain(int argc, wchar_t **argv)
     }
 
     CheckRxErrors();
+#ifdef WCN7850_REPLAY
+    CheckWcn7850RadioMeasurement();
+#endif
     CheckRxPhy();
     CheckActionErrors();
     CheckChannelSequence();
