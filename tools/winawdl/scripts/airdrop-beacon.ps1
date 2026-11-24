@@ -3,6 +3,7 @@
 # identity: only receivers visible to everyone react. Runs until it is killed;
 # airdrop\sender.py starts and stops it. -DryRun builds it and sends nothing.
 # Windows PowerShell 5.1 only: PowerShell 7 cannot load the Bluetooth API so.
+param([switch]$DryRun, [ValidateRange(0,300)][int]$DurationSeconds = 0)
 $ErrorActionPreference = 'Stop'
 $AppleCompanyId = 0x004C
 $StartWaitSeconds = 5
@@ -46,7 +47,7 @@ public static class AirDropBeacon {
   $data.Data = [Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions]::AsBuffer($payload)
   $publisher = New-Object "$namespace.BluetoothLEAdvertisementPublisher"
   [AirDropBeacon]::Add($publisher, $data)
-  if ($args -contains '-DryRun') { Say "would advertise $($payload.Length) bytes"; return }
+  if ($DryRun) { Say "would advertise $($payload.Length) bytes"; return }
   $publisher.Start()
 
   $deadline = (Get-Date).AddSeconds($StartWaitSeconds)
@@ -58,7 +59,12 @@ public static class AirDropBeacon {
     return
   }
   Say 'advertising'
-  while ($true) { Start-Sleep -Seconds 3600 }
+  try {
+    if ($DurationSeconds) { Start-Sleep -Seconds $DurationSeconds }
+    else { while ($true) { Start-Sleep -Seconds 3600 } }
+  } finally {
+    $publisher.Stop()
+  }
 } catch {
   Say "Bluetooth advertising failed: $($_.Exception.Message)"
 }

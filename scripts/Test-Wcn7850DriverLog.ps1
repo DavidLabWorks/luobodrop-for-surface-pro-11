@@ -1,5 +1,6 @@
 ﻿#Requires -RunAsAdministrator
-param([switch]$AirDropPanel)
+param([switch]$AirDropPanel, [switch]$BeaconControl)
+if ($AirDropPanel -and $BeaconControl) { throw "请一次选择一种实验。" }
 $ErrorActionPreference = 'Stop'
 $nic = Get-NetAdapter -Name WLAN
 if ($nic.Status -ne 'Up' -or $nic.InterfaceDescription -notlike '*FastConnect*7800*') {
@@ -10,22 +11,33 @@ if ($provider.Id -ne [guid]'bb6f5b93-635c-47be-816f-e895e77064a8') { throw 'Wlan
 $name = 'SurfaceWlanLog-' + [guid]::NewGuid().ToString('N')
 $file = Join-Path $env:TEMP "$name.etl"
 $maxSize = 16
-if ($AirDropPanel) {
+if ($AirDropPanel -or $BeaconControl) {
     $maxSize = 128
     [void](Read-Host '请让苹果设备停在主屏幕，准备好后在 Surface 按回车')
 }
 $startLog = netsh trace start "sessionname=$name" capture=no "provider={$($provider.Id)}" level=255 keywords=0xffffffffffffffff report=disabled persistent=no perfMerge=no "maxSize=$maxSize" "traceFile=$file"
 if ($LASTEXITCODE) { throw "启动失败：$startLog" }
 try {
-    if ($AirDropPanel) {
+    if ($AirDropPanel -or $BeaconControl) {
         $baselineStart = Get-Date
         Write-Host '第一段：保持主屏幕，等待 15 秒。'
         Start-Sleep -Seconds 15
         $panelStart = Get-Date
-        Write-Host '第二段：现在打开照片 → 分享 → 隔空投送，停在选择接收人的页面。'
-        Start-Sleep -Seconds 20
+        if ($BeaconControl) {
+            Write-Host '第二段：Surface 正在启动蓝牙广播；iPhone 保持解锁即可。'
+            $beacon = Join-Path $PSScriptRoot '../tools/winawdl/scripts/airdrop-beacon.ps1'
+            $result = @(powershell.exe -NoProfile -File $beacon -DurationSeconds 20)
+            if ($result -notcontains 'advertising' -or ($result -match 'failed|did not start')) {
+                throw "蓝牙广播未正常完成：$result"
+            }
+            Write-Host 'Windows 已报告广播启动，20 秒广播窗口已结束。'
+        } else {
+            Write-Host '第二段：现在打开照片 → 分享 → 隔空投送，停在选择接收人的页面。'
+            Start-Sleep -Seconds 20
+        }
         $recoveryStart = Get-Date
-        Write-Host '第三段：现在退出隔空投送，回到主屏幕。'
+        if ($BeaconControl) { Write-Host '第三段：广播已停止，等待 15 秒。' }
+        else { Write-Host '第三段：现在退出隔空投送，回到主屏幕。' }
         Start-Sleep -Seconds 15
         $end = Get-Date
     } else {
@@ -40,8 +52,9 @@ try {
     $stopLog = netsh trace stop "sessionname=$name"
     if ($LASTEXITCODE) { throw "停止失败：$stopLog 。请运行 netsh trace stop sessionname=$name" }
 }
-if ($AirDropPanel) {
-    $rows = @(foreach ($phase in '主屏幕','隔空投送','退出后') {
+if ($AirDropPanel -or $BeaconControl) {
+    $phases = if ($BeaconControl) { '广播前','启动及广播','停止后' } else { '主屏幕','隔空投送','退出后' }
+    $rows = @(foreach ($phase in $phases) {
         [pscustomobject]@{阶段=$phase; 日志=0; 管理帧接收事件=0; 动作帧=0; 类别127=0}
     })
     Get-WinEvent -Path $file -Oldest | ForEach-Object {
