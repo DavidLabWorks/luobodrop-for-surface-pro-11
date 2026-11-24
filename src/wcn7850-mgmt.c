@@ -9,6 +9,11 @@
 #define RX_ERR_DECRYPT 0x08u
 #define RX_ERR_MIC 0x10u
 #define RX_ERR_KEY_CACHE_MISS 0x20u
+#define HTC_HEADER_BYTES 8u
+#define HTC_MAX_MESSAGE_BYTES 4096u
+#define HTC_LAST_ENDPOINT 8u
+#define HTC_TRAILER_PRESENT 0x02u
+#define HTC_RECORD_HEADER_BYTES 4u
 
 static uint32_t Read32(const uint8_t *p)
 {
@@ -68,4 +73,36 @@ int Wcn7850ReadValidMgmtFrame(const uint8_t *event, size_t length, WCN7850_MGMT_
         return 0;
     }
     return 1;
+}
+
+int Wcn7850ReadHtcMgmtFrame(const uint8_t *buffer, size_t received, uint8_t wmi_endpoint,
+                            WCN7850_MGMT_FRAME *frame)
+{
+    if (!frame)
+        return 0;
+    *frame = (WCN7850_MGMT_FRAME){0};
+    if (!buffer || received < HTC_HEADER_BYTES || !wmi_endpoint ||
+        wmi_endpoint > HTC_LAST_ENDPOINT || buffer[0] != wmi_endpoint)
+        return 0;
+
+    size_t payload = (size_t)buffer[2] | (size_t)buffer[3] << 8;
+    if (payload > received - HTC_HEADER_BYTES || payload > HTC_MAX_MESSAGE_BYTES - HTC_HEADER_BYTES)
+        return 0;
+    const uint8_t *event = buffer + HTC_HEADER_BYTES;
+    size_t event_length = payload;
+    if (buffer[1] & HTC_TRAILER_PRESENT) {
+        size_t trailer = buffer[4];
+        if (trailer < HTC_RECORD_HEADER_BYTES || trailer > payload)
+            return 0;
+        event_length -= trailer;
+        for (size_t pos = event_length; pos < payload;) {
+            if (payload - pos < HTC_RECORD_HEADER_BYTES)
+                return 0;
+            size_t size = HTC_RECORD_HEADER_BYTES + event[pos + 1];
+            if (size > payload - pos)
+                return 0;
+            pos += size;
+        }
+    }
+    return Wcn7850ReadValidMgmtFrame(event, event_length, frame);
 }

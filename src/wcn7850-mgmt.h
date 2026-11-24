@@ -16,3 +16,9 @@ int Wcn7850ReadMgmtEvent(const uint8_t *event, size_t length, WCN7850_MGMT_FRAME
 /* Receive-path view: require a management header and exclude firmware
    CRC, decrypt, MIC and key-cache-miss errors. On failure the view is empty. */
 int Wcn7850ReadValidMgmtFrame(const uint8_t *event, size_t length, WCN7850_MGMT_FRAME *frame);
+
+/* Parse the first HTC message in a completed RX buffer. wmi_endpoint
+   comes from the WMI service connection response. The returned bytes
+   borrow the input buffer and must be consumed before it is recycled. */
+int Wcn7850ReadHtcMgmtFrame(const uint8_t *buffer, size_t received, uint8_t wmi_endpoint,
+                            WCN7850_MGMT_FRAME *frame);

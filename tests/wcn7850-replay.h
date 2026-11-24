@@ -36,6 +36,24 @@ static void ReplayWcn7850Event(const uint8_t *bytes, size_t length, AWDL_ACTION_
     assert(memcmp(frame.bytes, bytes, length) == 0);
     assert(AwdlDecodeAction(frame.bytes, frame.length, &action) == expected);
 
+    uint8_t htc[8 + sizeof(event) + 8] = {0};
+    size_t message_length = 80 + padded;
+    WriteLe32(htc, 3u | (uint32_t)message_length << 16);
+    memcpy(htc + 8, event, message_length);
+    assert(Wcn7850ReadHtcMgmtFrame(htc, 8 + message_length, 3, &frame));
+    assert(frame.bytes == htc + 88 && frame.length == length);
+    assert(AwdlDecodeAction(frame.bytes, frame.length, &action) == expected);
+    assert(!Wcn7850ReadHtcMgmtFrame(htc, 8 + message_length, 4, &frame));
+    assert(!Wcn7850ReadHtcMgmtFrame(htc, 7 + message_length, 3, &frame));
+    /* One opaque trailer record, followed by unused completion-buffer space. */
+    WriteLe32(htc, 3u | 0x0200u | (uint32_t)(message_length + 4) << 16);
+    htc[4] = 4;
+    assert(Wcn7850ReadHtcMgmtFrame(htc, 16 + message_length, 3, &frame));
+    assert(frame.length == length && memcmp(frame.bytes, bytes, length) == 0);
+    htc[8 + message_length + 1] = 5;
+    assert(!Wcn7850ReadHtcMgmtFrame(htc, 16 + message_length, 3, &frame));
+    assert(!frame.bytes && !frame.length);
+
     const uint32_t errors[] = {0x01, 0x08, 0x10, 0x20};
     for (size_t i = 0; i < sizeof(errors) / sizeof(errors[0]); ++i) {
         WriteLe32(event + 28, errors[i]);
