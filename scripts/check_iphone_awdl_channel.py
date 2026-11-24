@@ -23,9 +23,11 @@ def channel_fields(node, path=()):
 async def inspect():
     async with await create_using_usbmux(connection_type="USB") as phone:
         async with DiagnosticsService(phone) as service:
-            for source in ("awdl0", "wifi"):
-                entry = await (service.ioregistry(name="awdl0") if source == "awdl0"
-                               else service.get_wifi())
+            for source in ("awdl0", "AppleBCMWLANProximityInterface", "wifi"):
+                entry = await (service.get_wifi() if source == "wifi"
+                               else service.ioregistry(name=source))
+                if isinstance(entry, dict) and entry.get("IO80211VirtualInterfaceRole") == "AirLink":
+                    print(f"{source}: AirLink role confirmed")
                 fields = sorted(set(channel_fields(entry)))
                 print(f"{source}: entry present={bool(entry)}, numeric hints={len(fields)}")
                 for path, value in fields:
