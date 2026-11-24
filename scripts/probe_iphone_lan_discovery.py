@@ -57,6 +57,21 @@ class PhoneReceiver(receiver.Receiver):
                 and ipaddress.ip_address(client_address[0].split("%")[0]) in self.phone_addresses)
 
 
+def publish_window(sock, service, index, deadline, stopping, counts):
+    destination = (mdns.GROUP, mdns.PORT, 0, index)
+    try:
+        while not stopping.is_set():
+            remaining = deadline - time.monotonic()
+            if remaining < 1:
+                break
+            sock.sendto(service.response(ttl=min(10, int(remaining))), destination)
+            counts["multicast_sent"] += 1
+            stopping.wait(min(remaining, mdns.ANNOUNCE_PERIOD_S))
+    finally:
+        sock.sendto(service.response(alive=False), destination)
+        counts["goodbye_sent"] += 1
+
+
 async def run(args):
     index = netif.interface_index(args.iface)
     address = netif.link_local_address(index) if index else None
@@ -91,8 +106,11 @@ async def run(args):
         counts = Counter()
         last_reply = {}
         async with await create_using_usbmux(connection_type="USB") as phone, PcapdService(phone) as cap:
+            stopping = threading.Event()
+            publisher = None
             try:
-                async with asyncio.timeout(args.seconds):
+                duration = 60 if args.multicast_60s else args.seconds
+                async with asyncio.timeout(duration):
                     async for packet in cap.watch():
                         interface = packet.interface_name
                         if not interface[-1:].isdigit():
@@ -101,6 +119,13 @@ async def run(args):
                             continue
                         counts[interface + "_packets"] += 1
                         if interface == "en0" and counts["en0_packets"] == 1:
+                            if args.multicast_60s:
+                                sock = sockets[6]
+                                sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_IF, index)
+                                sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_MULTICAST_HOPS, 255)
+                                publisher = threading.Thread(target=publish_window, args=(
+                                    sock, service, index, time.monotonic() + duration, stopping, counts))
+                                publisher.start()
                             print("Ready for the iPhone AirDrop picker", flush=True)
                         parsed = ip_header(packet.data)
                         if not parsed:
@@ -137,6 +162,8 @@ async def run(args):
                         if not service.names().intersection(names):
                             continue
                         counts["phone_query"] += 1
+                        if args.multicast_60s:
+                            continue
                         if time.monotonic() - last_reply.get(source, 0) < mdns.MIN_REPLY_GAP_S:
                             continue
                         dest = (str(source), sport) if source.version == 4 else (str(source), sport, 0, index)
@@ -148,6 +175,9 @@ async def run(args):
             else:
                 raise RuntimeError("USB capture ended early")
             finally:
+                if publisher is not None:
+                    stopping.set()
+                    publisher.join()
                 print("Discovery counters:", dict(counts), flush=True)
 
 
@@ -156,4 +186,6 @@ if __name__ == "__main__":
     parser.add_argument("--iface", default="WLAN")
     parser.add_argument("--ipv4", required=True, help="local IPv4 address of the selected WLAN")
     parser.add_argument("--seconds", type=int, choices=range(1, 181), default=90, metavar="1..180")
+    parser.add_argument("--multicast-60s", action="store_true",
+                        help="publish via WLAN IPv6 multicast for at most 60 seconds")
     asyncio.run(run(parser.parse_args()))
