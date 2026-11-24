@@ -13,6 +13,9 @@ $file = Join-Path $env:TEMP "$name.etl"
 $maxSize = 16
 if ($AirDropPanel -or $BeaconControl) {
     $maxSize = 128
+    if ($BeaconControl) {
+        Write-Host '请打开 iPhone 的 Wi-Fi 和蓝牙，断开个人热点，在“设置 → 通用 → 隔空投送”选择“所有人（10 分钟）”。'
+    }
     [void](Read-Host '请让苹果设备停在主屏幕，准备好后在 Surface 按回车')
 }
 $startLog = netsh trace start "sessionname=$name" capture=no "provider={$($provider.Id)}" level=255 keywords=0xffffffffffffffff report=disabled persistent=no perfMerge=no "maxSize=$maxSize" "traceFile=$file"
