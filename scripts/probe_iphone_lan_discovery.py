@@ -91,14 +91,29 @@ async def run(args):
         counts = Counter()
         last_reply = {}
         async with await create_using_usbmux(connection_type="USB") as phone, PcapdService(phone) as cap:
-            print("Ready for the iPhone AirDrop picker", flush=True)
             try:
                 async with asyncio.timeout(args.seconds):
-                    async for packet in cap.watch(interface_name="en0"):
+                    async for packet in cap.watch():
+                        interface = packet.interface_name
+                        if not interface[-1:].isdigit():
+                            interface += str(packet.unit)
+                        if interface not in ("en0", "awdl0"):
+                            continue
+                        counts[interface + "_packets"] += 1
+                        if interface == "en0" and counts["en0_packets"] == 1:
+                            print("Ready for the iPhone AirDrop picker", flush=True)
                         parsed = ip_header(packet.data)
                         if not parsed:
                             continue
                         source, protocol, payload = parsed
+                        names = set()
+                        if (packet.io == 1 and protocol == 17 and len(payload) >= 20
+                                and struct.unpack_from("!H", payload, 2)[0] == mdns.PORT):
+                            names = mdns.question_names(payload[8:])
+                            if service.type_name in names:
+                                counts[interface + "_airdrop_query"] += 1
+                        if interface != "en0":
+                            continue
                         if (packet.io == 16 and protocol == 17 and len(payload) >= 20
                                 and struct.unpack_from("!HH", payload) == (mdns.PORT, mdns.PORT)):
                             if any(name == service.type_name and value == service.instance_name
@@ -119,7 +134,7 @@ async def run(args):
                         sport, dport = struct.unpack_from("!HH", payload)
                         if sport != mdns.PORT or dport != mdns.PORT:
                             continue
-                        if not service.names().intersection(mdns.question_names(payload[8:])):
+                        if not service.names().intersection(names):
                             continue
                         counts["phone_query"] += 1
                         if time.monotonic() - last_reply.get(source, 0) < mdns.MIN_REPLY_GAP_S:
@@ -132,7 +147,8 @@ async def run(args):
                 pass
             else:
                 raise RuntimeError("USB capture ended early")
-        print("Discovery counters:", dict(counts), flush=True)
+            finally:
+                print("Discovery counters:", dict(counts), flush=True)
 
 
 if __name__ == "__main__":
