@@ -513,6 +513,10 @@ static void CheckTransmitReports(void)
     assert(Mt7922ReadTxRelease(data, 20, request.Token, &release) == Mt7922TxReportMalformed);
 }
 
+#ifdef WCN7850_REPLAY
+#include "wcn7850-replay.h"
+#endif
+
 static void ReplayCapture(const wchar_t *Path, unsigned ExpectedFrames,
     unsigned ExpectedPsf, unsigned ExpectedMif, uint32_t ExpectedSchedule)
 {
@@ -557,6 +561,9 @@ static void ReplayCapture(const wchar_t *Path, unsigned ExpectedFrames,
         if (expected == AwdlMif)
             mif++;
         if (expected == AwdlPsf || expected == AwdlMif) {
+#ifdef WCN7850_REPLAY
+            ReplayWcn7850Event(packet + start, frameBytes, expected);
+#endif
             schedule = FoldSchedule(schedule, frames, expected, &original);
             const MT7922_AWDL_TX request = {SIM_BUFFER_BUS, 0, 3, 3, 0, 1, MT7922_OFDM_6_MBPS};
             uint8_t txwi[MT7922_TXWI_BYTES];
