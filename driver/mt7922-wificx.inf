@@ -1,0 +1,88 @@
+; Coexistence WiFiCx station driver for the exact MT7922 on this computer.
+; Installation follows the Microsoft WiFiCx sample INF (Net class, IF_TYPE_IEEE80211).
+[Version]
+Signature   = "$WINDOWS NT$"
+Class       = NET
+ClassGuid   = {4d36e972-e325-11ce-bfc1-08002be10318}
+Provider    = %ProviderName%
+CatalogFile = mt7922-wificx.cat
+DriverVer   = 11/23/2026,0.70.0.84
+PnpLockdown = 1
+
+[DestinationDirs]
+DefaultDestDir = 13
+
+[SourceDisksNames]
+1 = %DiskName%,,,
+
+[SourceDisksFiles]
+mt7922-wificx.sys = 1,,
+mt7922-wificx-fw.bin = 1,,
+mt7922-wificx-clc.bin = 1,,
+
+[Manufacturer]
+%ManufacturerName% = Models,NTamd64.10.0...22000
+
+[Models.NTamd64.10.0...22000]
+%DeviceDesc% = Mt7922Wifi_Device.ndi, PCI\VEN_14C3&DEV_0616&SUBSYS_E0DF105B&REV_00
+
+[Mt7922Wifi_Device.ndi.NT]
+CopyFiles = Mt7922Wifi_Copy
+Characteristics = 0x84
+BusType = 0
+AddReg = Mt7922Wifi_Ndi, netvadapter.params
+*IfType = 71
+*MediaType = 16
+*PhysicalMediaType = 9
+
+[Mt7922Wifi_Copy]
+mt7922-wificx.sys
+mt7922-wificx-fw.bin
+mt7922-wificx-clc.bin
+
+[Mt7922Wifi_Device.ndi.NT.Services]
+AddService = mt7922wificx,%SPSVCINST_ASSOCSERVICE%, Mt7922Wifi_Service_Inst
+
+[Mt7922Wifi_Service_Inst]
+DisplayName    = %ServiceDesc%
+ServiceType    = 1
+StartType      = 3
+ErrorControl   = 1
+ServiceBinary  = %13%\mt7922-wificx.sys
+
+[Mt7922Wifi_Device.ndi.NT.Wdf]
+KmdfService = mt7922wificx, Mt7922Wifi_Wdf
+
+[Mt7922Wifi_Wdf]
+KmdfLibraryVersion = 1.33
+
+[Mt7922Wifi_Ndi]
+HKR, Ndi, Service, 0, "mt7922wificx"
+HKR, Ndi\Interfaces, UpperRange, 0, "ndis5"
+HKR, Ndi\Interfaces, LowerRange, 0, "wlan,ethernet"
+HKR, NetworkInterface, *IfConnectorPresent, 0x00010001, 1
+HKR, NetworkInterface, *ConnectionType, 0x00010001, 1
+HKR, NetworkInterface, *DirectionType, 0x00010001, 0
+HKR, NetworkInterface, *AccessType, 0x00010001, 2
+HKR, NetworkInterface, *HardwareLoopback, 0x00010001, 0
+HKR, , NumberOfNetworkInterfaces, 0x00010001, 11
+; MT7922_STATION_RADIO_PROFILE: country CN, nine non-DFS 5 GHz channels,
+; 20 dBm ceiling before firmware CLC and eFuse calibration.
+HKR, , StationRadioProfile, 0x00000001, 0x43,0x4e,0x09,0x24,0x28,0x28,0x28,0x2c,0x28,0x30,0x28,0x95,0x28,0x99,0x28,0x9d,0x28,0xa1,0x28,0xa5,0x28
+
+[netvadapter.params]
+HKR, Ndi\params\MACLastByte, ParamDesc, 0, "MACLastByte"
+HKR, Ndi\params\MACLastByte, default, 0, "1"
+HKR, Ndi\params\MACLastByte, type, 0, "int"
+HKR, Ndi\params\MACLastByte, min, 0, "1"
+HKR, Ndi\params\MACLastByte, max, 0, "254"
+HKR, Ndi\params\MACLastByte, step, 0, "1"
+HKR, Ndi\params\MACLastByte, Optional, 0, "0"
+
+[Strings]
+ProviderName = "MT7922 AirDrop"
+ManufacturerName = "MT7922 AirDrop"
+DeviceDesc = "MT7922 Wi-Fi Coexistence (AirDrop)"
+ServiceDesc = "MT7922 Wi-Fi Coexistence"
+DiskName = "MT7922 WiFiCx Installation Disk"
+SPSVCINST_ASSOCSERVICE = 0x00000002
